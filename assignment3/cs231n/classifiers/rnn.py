@@ -135,7 +135,30 @@ class CaptioningRNN(object):
     # defined above to store loss and gradients; grads[k] should give the      #
     # gradients for self.params[k].                                            #
     ############################################################################
-    pass
+    # forward
+    # (1)
+    h0 = features.dot(W_proj) + b_proj
+    # (2)
+    wordvec, wordvec_cache = word_embedding_forward(captions_in, W_embed)
+    # (3)
+    if self.cell_type == 'rnn':
+        h, h_cache = rnn_forward(wordvec, h0, Wx, Wh, b)
+    elif self.cell_type == 'lstm':
+        pass
+    # (4)
+    scores, scores_cache = temporal_affine_forward(h, W_vocab, b_vocab)
+    # (5)
+    loss, dscores = temporal_softmax_loss(scores, captions_out, mask)
+
+    # backward
+    dh, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dscores, scores_cache)
+    if self.cell_type == 'rnn':
+        dwordvec, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dh, h_cache)
+    elif self.cell_type == 'lstm':
+        pass
+    grads['W_embed'] = word_embedding_backward(dwordvec, wordvec_cache)
+    grads['W_proj'] = features.T.dot(dh0)
+    grads['b_proj'] = np.sum(dh0, axis=0)
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -197,7 +220,23 @@ class CaptioningRNN(object):
     # functions; you'll need to call rnn_step_forward or lstm_step_forward in #
     # a loop.                                                                 #
     ###########################################################################
-    pass
+    prev_h = features.dot(W_proj) + b_proj
+    H = prev_h.shape[1]
+    prev_word = self._start * np.ones((N, 1))
+    for i in xrange(max_length):
+        # (1)
+        wordvec, wordvec_cache = word_embedding_forward(prev_word, W_embed)
+        # (2)
+        if self.cell_type == 'rnn':
+            next_h, h_cache = rnn_step_forward(wordvec[:, 0, :], prev_h, Wx, Wh, b)
+        # (3)
+        scores, scores_cache = temporal_affine_forward(next_h.reshape(N, 1, H), W_vocab, b_vocab)
+        # (4)
+        next_word = np.argmax(scores[:, 0, :], axis=1)
+        captions[:, i] = next_word
+        prev_h = next_h
+        prev_word = next_word.reshape(N, 1)
+
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
